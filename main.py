@@ -10,12 +10,10 @@ from dotenv import load_dotenv
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("new_music_checker.log"),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("new_music_checker.log"), logging.StreamHandler()],
 )
+
 
 class Artist:
     def __init__(
@@ -31,8 +29,10 @@ class Artist:
     def __repr__(self):
         return f"{self.name} ({self.spotify_url})"
 
+
 class Release:
-    def __init__(self,
+    def __init__(
+        self,
         id: str,
         artist_name: str,
         spotify_url: str,
@@ -48,6 +48,7 @@ class Release:
     def __repr__(self):
         return f"{self.release_date} ({self.spotify_url})"
 
+
 def get_spotify_client() -> spotipy.Spotify:
     scope = "user-follow-read"
     auth_manager = SpotifyOAuth(
@@ -56,26 +57,33 @@ def get_spotify_client() -> spotipy.Spotify:
     sp = spotipy.Spotify(auth_manager=auth_manager)
     return sp
 
+
 def get_following_artists(sp: spotipy.Spotify) -> list[Artist]:
     results = sp.current_user_followed_artists(limit=50)
     artists = []
-    for artist in results['artists']['items']:
-        artists.append(Artist(artist['id'], artist['name'], artist['external_urls']['spotify']))
+    for artist in results["artists"]["items"]:
+        artists.append(
+            Artist(artist["id"], artist["name"], artist["external_urls"]["spotify"])
+        )
     return artists
+
 
 def save_releases_to_file(releases: list[Release]):
     releases_record = []
     for release in releases:
-        releases_record.append({
-            'id': release.id,
-            'artist_name': release.artist_name,
-            'spotify_url': release.spotify_url,
-            'release_date': release.release_date,
-            'release_type': release.release_type
-        })
-    with open('releases.json', 'w') as file:
+        releases_record.append(
+            {
+                "id": release.id,
+                "artist_name": release.artist_name,
+                "spotify_url": release.spotify_url,
+                "release_date": release.release_date,
+                "release_type": release.release_type,
+            }
+        )
+    with open("releases.json", "w") as file:
         json.dump(releases_record, file)
     logging.info("Releases saved to releases.json")
+
 
 def add_new_releases_to_file(releases: list[Release]):
     releases_record = load_releases_from_file()
@@ -83,24 +91,28 @@ def add_new_releases_to_file(releases: list[Release]):
         releases_record.append(release)
     save_releases_to_file(releases_record)
 
+
 def load_releases_from_file() -> list[Release]:
-    if not os.path.exists('releases.json'):
+    if not os.path.exists("releases.json"):
         logging.info("No releases.json file found.")
         return []
 
-    with open('releases.json', 'r') as file:
+    with open("releases.json", "r") as file:
         releases_record = json.load(file)
 
     releases = []
     for record in releases_record:
-        releases.append(Release(
-            id=record['id'],
-            artist_name=record['artist_name'],
-            spotify_url=record['spotify_url'],
-            release_date=record['release_date'],
-            release_type=record['release_type']
-        ))
+        releases.append(
+            Release(
+                id=record["id"],
+                artist_name=record["artist_name"],
+                spotify_url=record["spotify_url"],
+                release_date=record["release_date"],
+                release_type=record["release_type"],
+            )
+        )
     return releases
+
 
 def contains_release(releases_record: list[Release], release: Release) -> bool:
     for record in releases_record:
@@ -108,8 +120,10 @@ def contains_release(releases_record: list[Release], release: Release) -> bool:
             return True
     return False
 
+
 def check_if_new_release(releases_record: list[Release], release: Release) -> bool:
     return not contains_release(releases_record, release)
+
 
 def get_following_artists_new_releases(sp: spotipy.Spotify) -> list:
     artists = get_following_artists(sp)
@@ -117,45 +131,54 @@ def get_following_artists_new_releases(sp: spotipy.Spotify) -> list:
         return []
     new_releases = []
     for artist in artists:
-        latest_releases = sp.artist_albums(artist.id, include_groups='album,single,appears_on', limit=5)
-        if not latest_releases['items']:
+        latest_releases = sp.artist_albums(
+            artist.id, include_groups="album,single,appears_on", limit=5
+        )
+        if not latest_releases["items"]:
             continue
 
-        for album in latest_releases['items']:
-            today = datetime.date.today().strftime('%Y-%m-%d')
-            release_date = album['release_date']
-            if release_date >= today:
+        for album in latest_releases["items"]:
+            yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime(
+                "%Y-%m-%d"
+            )
+            release_date = album["release_date"]
+            if release_date >= yesterday:
                 release = Release(
-                    id=album['id'],
+                    id=album["id"],
                     artist_name=artist.name,
-                    spotify_url=album['external_urls']['spotify'],
+                    spotify_url=album["external_urls"]["spotify"],
                     release_date=release_date,
-                    release_type=album['album_type']
+                    release_type=album["album_type"],
                 )
                 new_releases.append(release)
     return new_releases
 
+
 def send_message_to_discord(releases: list[Release]):
-    webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
     if not webhook_url:
         logging.error("Discord webhook URL not set.")
         return
 
     push_message_to_discord(webhook_url, releases)
 
+
 def push_message_to_discord(webhook_url: str, releases: list[Release]):
-    headers = {
-        'Content-Type': 'application/json'
-    }
+    headers = {"Content-Type": "application/json"}
     for release in releases:
         data = {
             "content": f"New release from {release.artist_name}: {release.release_date} - {release.spotify_url}"
         }
         response = requests.post(webhook_url, headers=headers, data=json.dumps(data))
         if response.status_code != 204:
-            logging.error(f"Failed to send message to Discord: {response.status_code} - {response.text}")
+            logging.error(
+                f"Failed to send message to Discord: {response.status_code} - {response.text}"
+            )
         else:
-            logging.info(f"Message sent to Discord: {release.release_date} - {release.spotify_url}")
+            logging.info(
+                f"Message sent to Discord: {release.release_date} - {release.spotify_url}"
+            )
+
 
 def main():
     sp = get_spotify_client()
