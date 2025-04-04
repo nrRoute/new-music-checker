@@ -75,7 +75,7 @@ def get_following_artists(sp: spotipy.Spotify) -> list[Artist]:
         artists.append(create_artist_from_data(artist))
     while next_page:
         time.sleep(1)  # Add a delay to avoid hitting rate limits
-        results = sp.next(results["artists"])
+        results = sp.next(result=results["artists"])
         next_page = results["artists"]["next"]
         for artist in results["artists"]["items"]:
             artists.append(create_artist_from_data(artist))
@@ -144,17 +144,38 @@ def get_following_artists_new_releases(sp: spotipy.Spotify) -> list:
     if not artists:
         return []
     new_releases = []
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    )
     for artist in artists:
-        latest_releases = sp.artist_albums(
-            artist.id, include_groups="album,single,appears_on", limit=5
+        latest_albums = sp.artist_albums(
+            artist.id, include_groups="album", limit=5
         )
+        time.sleep(1)  # Add a delay to avoid hitting rate limits
+        latest_singles = sp.artist_albums(
+            artist.id, include_groups="single", limit=5
+        )
+        time.sleep(1)  # Add a delay to avoid hitting rate limits
+        latest_appears_on = sp.artist_albums(
+            artist.id, include_groups="appears_on", limit=5
+        )
+        time.sleep(1)  # Add a delay to avoid hitting rate limits
+        latest_compilations = sp.artist_albums(
+            artist.id, include_groups="compilation", limit=5
+        )
+        time.sleep(1)  # Add a delay to avoid hitting rate limits
+        latest_releases = {
+            "items": []
+        }
+        latest_releases["items"].extend(latest_albums["items"])
+        latest_releases["items"].extend(latest_singles["items"])
+        latest_releases["items"].extend(latest_appears_on["items"])
+        latest_releases["items"].extend(latest_compilations["items"])
+
         if not latest_releases["items"]:
             continue
 
         for album in latest_releases["items"]:
-            yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime(
-                "%Y-%m-%d"
-            )
             release_date = album["release_date"]
             if release_date >= yesterday:
                 release = Release(
@@ -165,6 +186,11 @@ def get_following_artists_new_releases(sp: spotipy.Spotify) -> list:
                     release_type=album["album_type"],
                 )
                 new_releases.append(release)
+
+        logging.info(
+            f"Checked {artist.name} for new releases. Found {len(new_releases)} new releases."
+        )
+
     return new_releases
 
 
@@ -201,7 +227,9 @@ def main():
     if not artists:
         logging.info("No followed artists found.")
         return
+    logging.info(f"Found {len(artists)} followed artists.")
 
+    logging.info("Checking for new releases...")
     spotify_releases = get_following_artists_new_releases(sp)
 
     if not spotify_releases:
