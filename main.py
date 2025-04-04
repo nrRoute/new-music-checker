@@ -5,6 +5,7 @@ import requests
 import json
 import logging
 import os
+import time
 import datetime
 from dotenv import load_dotenv
 
@@ -58,13 +59,26 @@ def get_spotify_client() -> spotipy.Spotify:
     return sp
 
 
+def create_artist_from_data(artist_data: dict) -> Artist:
+    return Artist(
+        id=artist_data["id"],
+        name=artist_data["name"],
+        spotify_url=artist_data["external_urls"]["spotify"],
+    )
+
+
 def get_following_artists(sp: spotipy.Spotify) -> list[Artist]:
     results = sp.current_user_followed_artists(limit=50)
     artists = []
+    next_page = results["artists"]["next"]
     for artist in results["artists"]["items"]:
-        artists.append(
-            Artist(artist["id"], artist["name"], artist["external_urls"]["spotify"])
-        )
+        artists.append(create_artist_from_data(artist))
+    while next_page:
+        time.sleep(1)  # Add a delay to avoid hitting rate limits
+        results = sp.next(results["artists"])
+        next_page = results["artists"]["next"]
+        for artist in results["artists"]["items"]:
+            artists.append(create_artist_from_data(artist))
     return artists
 
 
