@@ -55,7 +55,7 @@ def get_spotify_client() -> spotipy.Spotify:
     auth_manager = SpotifyOAuth(
         scope=scope,
     )
-    sp = spotipy.Spotify(auth_manager=auth_manager)
+    sp = spotipy.Spotify(auth_manager=auth_manager, requests_timeout=10)
     return sp
 
 
