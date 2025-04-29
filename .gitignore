@@ -11,3 +11,6 @@ wheels/
 
 .env
 .cache
+logs/
+releases.json
+new_music_checker.log

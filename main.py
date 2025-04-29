@@ -78,18 +78,32 @@ def create_release_from_data(release_data: dict, artist_name: str) -> Release:
 
 
 def get_following_artists(sp: spotipy.Spotify) -> list[Artist]:
+    followed_artists_data = fetch_all_followed_artists(sp)
+    return [create_artist_from_data(artist) for artist in followed_artists_data]
+
+
+def fetch_all_followed_artists(sp: spotipy.Spotify) -> list[dict]:
     results = sp.current_user_followed_artists(limit=50)
-    artists = []
+    all_artists = results["artists"]["items"]
     next_page = results["artists"]["next"]
-    for artist in results["artists"]["items"]:
-        artists.append(create_artist_from_data(artist))
-    while next_page:
-        time.sleep(1)  # Add a delay to avoid hitting rate limits
-        results = sp.next(result=results["artists"])
-        next_page = results["artists"]["next"]
-        for artist in results["artists"]["items"]:
-            artists.append(create_artist_from_data(artist))
-    return artists
+
+    retry_count = 0
+    MAX_RETRIES = 5
+
+    while retry_count < MAX_RETRIES and next_page:
+        try:
+            results = sp.next(results["artists"])
+            next_page = results["artists"]["next"]
+            all_artists.extend(results["artists"]["items"])
+        except requests.exceptions.ConnectionError as e:
+            logging.error(f"Connection error: {e}")
+            retry_count += 1
+            time.sleep(1)
+            if retry_count >= MAX_RETRIES:
+                logging.error("Max retries reached. Exiting.")
+                break
+
+    return all_artists
 
 
 def save_releases_to_file(releases: list[Release]):
@@ -160,12 +174,19 @@ def get_following_artists_new_releases(sp: spotipy.Spotify) -> list:
             "items": []
         }
         for group in ["album", "single", "appears_on", "compilation"]:
-            latest_items = sp.artist_albums(
-                artist.id, include_groups=group, limit=5
-            )
+            try:
+                latest_items = sp.artist_albums(
+                    artist.id, include_groups=group, limit=5
+                )
+            except requests.exceptions.ConnectionError as e:
+                logging.error(f"Error fetching {group}s for {artist.name}: {e}")
+                continue
+            except requests.exceptions.ReadTimeout as e:
+                logging.error(f"Timeout error fetching {group}s for {artist.name}: {e}")
+                continue
             if latest_items["items"]:
                 latest_releases["items"].extend(latest_items["items"])
-            time.sleep(1)  # Add a delay to avoid hitting rate limits
+            time.sleep(1.5)  # Add a delay to avoid hitting rate limits
 
         if not latest_releases["items"]:
             continue
@@ -193,7 +214,7 @@ def push_message_to_discord(webhook_url: str, releases: list[Release]):
     headers = {"Content-Type": "application/json"}
     for release in releases:
         data = {
-            "content": f"New release from {release.artist_name}: {release.release_date} - {release.spotify_url}"
+            "content": f"New {release.release_date} from {release.artist_name}: {release.release_date} - {release.spotify_url}"
         }
         response = requests.post(webhook_url, headers=headers, data=json.dumps(data))
         if response.status_code != 204:
